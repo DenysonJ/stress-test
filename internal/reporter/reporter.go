@@ -2,7 +2,6 @@ package reporter
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 	"stress-test/internal/runner"
 	"strings"
@@ -22,13 +21,14 @@ func PrintReport(runnerResult *runner.StressResult, params runner.Params) {
 		}
 	}
 
-	successRequests := len(runnerResult.Response[http.StatusOK]) + len(runnerResult.Response[http.StatusCreated]) + len(runnerResult.Response[http.StatusAccepted])
-
 	fmt.Println("╔" + strings.Repeat("=", size.Width-2) + "╗")
 	printCentered("Summary", size)
-	printLine(" - Total requests: "+string(rune(params.Requests)), size)
+	printLineNumber(" - Total requests: ", params.Requests, size)
 	printLine(" - Url: "+params.Url, size)
-	printLine(" - Success: "+string(rune(successRequests)), size)
+	printLineNumber(" - Error: ", len(runnerResult.Error), size)
+	printLineNumber(" - Request Success: ", runnerResult.GetNumberOfSuccess(), size)
+	printLineNumber(" - Request Error: ", runnerResult.GetNumberOfErrors(), size)
+	printLineNumber(" - Total Duration: ", runnerResult.Duration.Seconds(), size)
 	fmt.Println("╚" + strings.Repeat("=", size.Width-2) + "╝")
 
 }
@@ -37,10 +37,18 @@ func printLine(str string, size gts.Size) {
 	fmt.Println("║" + str + strings.Repeat(" ", size.Width-len(str)-2) + "║")
 }
 
-func printLineNumber[V Number](number V, size gts.Size) {
+func printLineNumber[V Number](str string, number V, size gts.Size) {
 	switch reflect.TypeOf(number).Name() {
 	case "int":
-
+		printLine(str+fmt.Sprintf("%d", number), size)
+	case "int32":
+		printLine(str+fmt.Sprintf("%d", number), size)
+	case "int64":
+		printLine(str+fmt.Sprintf("%d", number), size)
+	case "float32":
+		printLine(str+fmt.Sprintf("%.2f", number), size)
+	case "float64":
+		printLine(str+fmt.Sprintf("%.2f", number), size)
 	}
 }
 

@@ -28,6 +28,26 @@ type StressResult struct {
 	Duration   time.Duration
 }
 
+func (sr StressResult) GetNumberOfErrors() int {
+	result := 0
+	for code, n := range sr.StatusCode {
+		if code >= 400 {
+			result += n
+		}
+	}
+	return result
+}
+
+func (sr StressResult) GetNumberOfSuccess() int {
+	result := 0
+	for code, n := range sr.StatusCode {
+		if code >= 200 && code < 300 {
+			result += n
+		}
+	}
+	return result
+}
+
 func NewStressRunner(params Params, httpClient *http.Client) *StressRunner {
 	return &StressRunner{
 		httpClient:     httpClient,
@@ -60,6 +80,7 @@ func (r *StressRunner) Start() *StressResult {
 			result.Error = append(result.Error, err)
 		case response := <-r.responses:
 			result.Response[response.Code] = append(result.Response[response.Code], response.Body)
+			result.StatusCode[response.Code] += 1
 		}
 	}
 
