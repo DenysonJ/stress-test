@@ -19,6 +19,8 @@ const breakMarker = "\x00break\x00"
 
 const barWidth = 20
 
+const maxErrorRunes = 500
+
 func PrintReport(runnerResult *runner.StressResult, params runner.Params) {
 	size, getErr := gts.GetSize()
 	if getErr != nil {
@@ -45,6 +47,12 @@ func PrintReport(runnerResult *runner.StressResult, params runner.Params) {
 
 	// Tabela de resumo dos bodies.
 	lines = append(lines, bodyTable(runnerResult)...)
+
+	// Tabela de erros de rede — só aparece quando houver.
+	if len(runnerResult.Error) > 0 {
+		lines = append(lines, breakMarker)
+		lines = append(lines, errorTable(runnerResult)...)
+	}
 
 	innerWidth := boxWidth(lines, size.Width)
 
@@ -112,6 +120,30 @@ func bodyTable(runnerResult *runner.StressResult) []string {
 	w.Flush()
 
 	return bufferLines(&buf)
+}
+
+// errorTable monta as linhas (já alinhadas) do resumo de erros de rede.
+func errorTable(runnerResult *runner.StressResult) []string {
+	var buf bytes.Buffer
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
+
+	fmt.Fprintln(w, "COUNT\tNETWORK ERROR")
+	for _, stat := range runnerResult.ErrorSummary() {
+		message := strings.Join(strings.Fields(stat.Message), " ")
+		fmt.Fprintf(w, "%d\t%s\n", stat.Count, truncate(message, maxErrorRunes))
+	}
+	w.Flush()
+
+	return bufferLines(&buf)
+}
+
+// truncate corta a string por runes (preservando caracteres multibyte).
+func truncate(str string, max int) string {
+	runes := []rune(str)
+	if len(runes) > max {
+		return string(runes[:max]) + "..."
+	}
+	return str
 }
 
 // sortedCodes devolve as chaves do map ordenadas, para a saída ser estável.

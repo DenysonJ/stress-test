@@ -43,6 +43,12 @@ type BodyStat struct {
 	Sample        string
 }
 
+// ErrorStat é a contagem de um tipo de erro de rede (agrupado por mensagem).
+type ErrorStat struct {
+	Message string
+	Count   int
+}
+
 func (sr StressResult) GetNumberOfErrors() int {
 	result := 0
 	for code, n := range sr.StatusCode {
@@ -90,6 +96,29 @@ func (sr StressResult) BodySummary() []BodyStat {
 
 		stats = append(stats, stat)
 	}
+
+	return stats
+}
+
+// ErrorSummary agrupa os erros de rede (Error) por mensagem e devolve a
+// contagem de cada um, ordenado do mais frequente para o menos frequente.
+func (sr StressResult) ErrorSummary() []ErrorStat {
+	counts := make(map[string]int)
+	for _, e := range sr.Error {
+		counts[e.Error()]++
+	}
+
+	stats := make([]ErrorStat, 0, len(counts))
+	for msg, n := range counts {
+		stats = append(stats, ErrorStat{Message: msg, Count: n})
+	}
+
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Count != stats[j].Count {
+			return stats[i].Count > stats[j].Count
+		}
+		return stats[i].Message < stats[j].Message
+	})
 
 	return stats
 }
