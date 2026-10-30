@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"os"
+	"time"
+
 	"stress-test/internal/reporter"
 	"stress-test/internal/runner"
 
@@ -16,7 +18,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	runnerService := runner.NewStressRunner(*params, http.DefaultClient)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	runnerService := runner.NewStressRunner(*params, httpClient)
 	result := runnerService.Start()
 
 	reporter.PrintReport(result, *params)

@@ -1,10 +1,17 @@
 package runner
 
 import (
+	"crypto/sha256"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 )
+
+const MaxBodyPerCode = 5
+
+const sampleMaxRunes = 50
 
 type responseResult struct {
 	Code int
@@ -28,6 +35,14 @@ type StressResult struct {
 	Duration   time.Duration
 }
 
+type BodyStat struct {
+	Code          int
+	Count         int
+	DistinctCount int
+	AvgSize       int
+	Sample        string
+}
+
 func (sr StressResult) GetNumberOfErrors() int {
 	result := 0
 	for code, n := range sr.StatusCode {
@@ -48,8 +63,60 @@ func (sr StressResult) GetNumberOfSuccess() int {
 	return result
 }
 
-func (sr StressResult) BodySummary() {
+func (sr StressResult) BodySummary() []BodyStat {
+	codes := make([]int, 0, len(sr.Response))
+	for code := range sr.Response {
+		codes = append(codes, code)
+	}
+	sort.Ints(codes)
 
+	stats := make([]BodyStat, 0, len(codes))
+	for _, code := range codes {
+		bodies := sr.Response[code]
+		stat := BodyStat{
+			Code:          code,
+			Count:         sr.StatusCode[code],
+			DistinctCount: len(bodies),
+		}
+
+		if len(bodies) > 0 {
+			totalSize := 0
+			for _, b := range bodies {
+				totalSize += len(b)
+			}
+			stat.AvgSize = totalSize / len(bodies)
+			stat.Sample = sampleOf(bodies[0])
+		}
+
+		stats = append(stats, stat)
+	}
+
+	return stats
+}
+
+func sampleOf(body []byte) string {
+	flattened := strings.Join(strings.Fields(string(body)), " ")
+
+	runes := []rune(flattened)
+	if len(runes) > sampleMaxRunes {
+		return string(runes[:sampleMaxRunes]) + "..."
+	}
+
+	return flattened
+}
+
+func (sr StressResult) ExistBody(body []byte, code int) bool {
+	shaBody := sha256.Sum256(body)
+
+	for _, r := range sr.Response[code] {
+		rs := sha256.Sum256(r)
+
+		if shaBody == rs {
+			return true
+		}
+	}
+
+	return false
 }
 
 func NewStressRunner(params Params, httpClient *http.Client) *StressRunner {
@@ -83,7 +150,9 @@ func (r *StressRunner) Start() *StressResult {
 		case err := <-r.requestsErr:
 			result.Error = append(result.Error, err)
 		case response := <-r.responses:
-			result.Response[response.Code] = append(result.Response[response.Code], response.Body)
+			if !result.ExistBody(response.Body, response.Code) && len(result.Response[response.Code]) < MaxBodyPerCode {
+				result.Response[response.Code] = append(result.Response[response.Code], response.Body)
+			}
 			result.StatusCode[response.Code] += 1
 		}
 	}
