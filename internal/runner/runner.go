@@ -48,6 +48,10 @@ func (sr StressResult) GetNumberOfSuccess() int {
 	return result
 }
 
+func (sr StressResult) BodySummary() {
+
+}
+
 func NewStressRunner(params Params, httpClient *http.Client) *StressRunner {
 	return &StressRunner{
 		httpClient:     httpClient,

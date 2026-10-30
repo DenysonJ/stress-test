@@ -1,11 +1,17 @@
 package reporter
 
 import (
+	"bytes"
 	"fmt"
-	"reflect"
+	"maps"
+	"net/http"
+	"slices"
 	"stress-test/internal/runner"
 	"strings"
+	"text/tabwriter"
+	"unicode/utf8"
 
+	"github.com/bytedance/gopkg/util/logger"
 	gts "github.com/kopoli/go-terminal-size"
 )
 
@@ -14,44 +20,68 @@ type Number interface {
 }
 
 func PrintReport(runnerResult *runner.StressResult, params runner.Params) {
-	size, err := gts.GetSize()
-	if err != nil {
+	size, getErr := gts.GetSize()
+	if getErr != nil {
 		size = gts.Size{
 			Width: 50,
 		}
 	}
 
-	fmt.Println("╔" + strings.Repeat("=", size.Width-2) + "╗")
-	printCentered("Summary", size)
-	printLineNumber(" - Total requests: ", params.Requests, size)
-	printLine(" - Url: "+params.Url, size)
-	printLineNumber(" - Error: ", len(runnerResult.Error), size)
-	printLineNumber(" - Request Success: ", runnerResult.GetNumberOfSuccess(), size)
-	printLineNumber(" - Request Error: ", runnerResult.GetNumberOfErrors(), size)
-	printLineNumber(" - Total Duration: ", runnerResult.Duration.Seconds(), size)
-	fmt.Println("╚" + strings.Repeat("=", size.Width-2) + "╝")
+	codes := slices.Sorted(maps.Keys(runnerResult.StatusCode))
 
-}
+	var buf bytes.Buffer
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
 
-func printLine(str string, size gts.Size) {
-	fmt.Println("║" + str + strings.Repeat(" ", size.Width-len(str)-2) + "║")
-}
+	frameLength := utf8.RuneCountInString("╔")
+	var allLines []string
 
-func printLineNumber[V Number](str string, number V, size gts.Size) {
-	switch reflect.TypeOf(number).Name() {
-	case "int":
-		printLine(str+fmt.Sprintf("%d", number), size)
-	case "int32":
-		printLine(str+fmt.Sprintf("%d", number), size)
-	case "int64":
-		printLine(str+fmt.Sprintf("%d", number), size)
-	case "float32":
-		printLine(str+fmt.Sprintf("%.2f", number), size)
-	case "float64":
-		printLine(str+fmt.Sprintf("%.2f", number), size)
+	allLines = append(allLines, fmt.Sprintf(" - Total requests: %d", params.Requests))
+	allLines = append(allLines, " - Url: "+params.Url)
+	allLines = append(allLines, " - Total time: "+runnerResult.Duration.String())
+	allLines = append(allLines, "break")
+
+	fmt.Fprintln(w, "STATUS\tDESCRIÇÃO\tQTD\t%")
+	for _, code := range codes {
+		percentage := float64(runnerResult.StatusCode[code]) / float64(params.Requests)
+		fmt.Fprintln(w, fmt.Sprintf("%d\t%s\t%d\t%.2f", code, http.StatusText(code), runnerResult.StatusCode[code], percentage))
 	}
+	flushErr := w.Flush()
+	if flushErr != nil {
+		logger.Info(flushErr)
+	}
+
+	for line := range strings.SplitSeq(strings.TrimRight(buf.String(), "\n"), "\n") {
+		allLines = append(allLines, line)
+	}
+
+	innerWidth := 0
+	for _, l := range allLines {
+		if w := utf8.RuneCountInString(l); w > innerWidth {
+			innerWidth = w
+		}
+	}
+	innerWidth += 4
+	innerWidth = min(innerWidth, size.Width-2)
+
+	fmt.Println("╔" + strings.Repeat("=", innerWidth-(2*frameLength)) + "╗")
+	printCentered("Summary", innerWidth)
+	for _, l := range allLines {
+		if l == "break" {
+			printLine(strings.Repeat("=", innerWidth-(2*frameLength)), innerWidth)
+			continue
+		}
+		printLine(l, innerWidth)
+	}
+	fmt.Println("╚" + strings.Repeat("=", innerWidth-(2*frameLength)) + "╝")
+
 }
 
-func printCentered(str string, size gts.Size) {
-	fmt.Println("║" + strings.Repeat(" ", (size.Width/2)-len(str)-1) + str + strings.Repeat(" ", (size.Width/2)-1) + "║")
+func printLine(str string, width int) {
+	frameLength := utf8.RuneCountInString("║")
+	fmt.Println("║" + str + strings.Repeat(" ", width-utf8.RuneCountInString(str)-(frameLength*2)) + "║")
+}
+
+func printCentered(str string, width int) {
+	frameLength := utf8.RuneCountInString("║")
+	fmt.Println("║" + strings.Repeat(" ", (width/2)-utf8.RuneCountInString(str)-frameLength) + str + strings.Repeat(" ", (width/2)-frameLength) + "║")
 }
